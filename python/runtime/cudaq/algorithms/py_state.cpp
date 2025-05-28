@@ -15,6 +15,7 @@
 #include "mlir/CAPI/IR.h"
 #include <pybind11/complex.h>
 #include <pybind11/stl.h>
+#include <cuda_runtime_api.h>  // for cudaMallocHost
 
 namespace {
 std::vector<int> bitStringToIntVec(const std::string &bitString) {
@@ -232,19 +233,22 @@ void bindPyState(py::module &mod, LinkedLibraryHolder &holder) {
           // ownership of a new data pointer on host. Store it globally
           // here so we ensure that it gets cleaned up.
           auto numElements = stateVector.get_num_elements();
+            void *pinnedMem = nullptr;
+
           if (precision == SimulationState::precision::fp32) {
-            auto *hostData = new std::complex<float>[numElements];
-            self.to_host(hostData, numElements);
-            dataPtr = reinterpret_cast<void *>(hostData);
+            auto bytes = numElements * sizeof(std::complex<float>);
+            cudaMallocHost(&pinnedMem, bytes);
+            self.to_host(reinterpret_cast<std::complex<float> *>(pinnedMem), numElements);
           } else {
-            auto *hostData = new std::complex<double>[numElements];
-            self.to_host(hostData, numElements);
-            dataPtr = reinterpret_cast<void *>(hostData);
+            auto bytes = numElements * sizeof(std::complex<double>);
+            cudaMallocHost(&pinnedMem, bytes);
+            self.to_host(reinterpret_cast<std::complex<double> *>(pinnedMem), numElements);
           }
-          hostDataFromDevice.emplace_back(dataPtr, [](void *data) {
-            cudaq::info("freeing data that was copied from GPU device for "
-                        "compatibility with NumPy");
-            free(data);
+
+          dataPtr = pinnedMem;
+          hostDataFromDevice.emplace_back(pinnedMem, [](void *data) {
+            cudaq::info("freeing pinned memory copied from GPU device for NumPy interop");
+            cudaFreeHost(data);
           });
         } else
           dataPtr = self.get_tensor().data;
