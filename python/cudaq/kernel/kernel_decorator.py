@@ -129,7 +129,14 @@ class PyKernelDecorator(object):
         else:
             # Get the function source
             src = inspect.getsource(self.kernelFunction)
-            # Detect alias used to import cudaq and replace it with canonical name
+
+            # Strip off the extra tabs
+            leadingSpaces = len(src) - len(src.lstrip())
+            self.funcSrc = '\n'.join(
+                [line[leadingSpaces:] for line in src.split('\n')])
+
+        # Create the AST
+            # Detect alias used to import cudaq (e.g., 'import cudaq as quda')
             for name, val in self.parentFrame.f_globals.items():
                 try:
                     if hasattr(val, '__name__') and val.__name__ == 'cudaq':
@@ -140,14 +147,31 @@ class PyKernelDecorator(object):
                 except Exception:
                     continue
 
+            # AST rewrite to support 'from cudaq import qubit as qb'
+            class CudaQAliasRewriter(ast.NodeTransformer):
+                def __init__(self):
+                    self.alias_map = {}  # e.g., qb -> qubit
 
-            # Strip off the extra tabs
-            leadingSpaces = len(src) - len(src.lstrip())
-            self.funcSrc = '\n'.join(
-                [line[leadingSpaces:] for line in src.split('\n')])
+                def visit_ImportFrom(self, node):
+                    if node.module == 'cudaq':
+                        for alias in node.names:
+                            self.alias_map[alias.asname or alias.name] = alias.name
+                    return node
 
-        # Create the AST
-        self.astModule = ast.parse(self.funcSrc)
+                def visit_Name(self, node):
+                    if node.id in self.alias_map:
+                        return ast.Attribute(
+                            value=ast.Name(id='cudaq', ctx=ast.Load()),
+                            attr=self.alias_map[node.id],
+                            ctx=node.ctx
+                        )
+                    return node
+
+            parsed = ast.parse(src)
+            parsed = CudaQAliasRewriter().visit(parsed)
+            ast.fix_missing_locations(parsed)
+            self.astModule = parsed
+
         if verbose and importlib.util.find_spec('astpretty') is not None:
             import astpretty
             astpretty.pprint(self.astModule.body[0])
