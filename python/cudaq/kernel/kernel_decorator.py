@@ -135,7 +135,7 @@ class PyKernelDecorator(object):
             self.funcSrc = '\n'.join(
                 [line[leadingSpaces:] for line in src.split('\n')])
 
-        # Create the AST
+            # Create the AST
             # Detect alias used to import cudaq (e.g., 'import cudaq as quda')
             for name, val in self.parentFrame.f_globals.items():
                 try:
@@ -147,24 +147,25 @@ class PyKernelDecorator(object):
                 except Exception:
                     continue
 
-            # AST rewrite to support 'from cudaq import qubit as qb'
+            # support 'from cudaq import qubit as qb'
             class CudaQAliasRewriter(ast.NodeTransformer):
+
                 def __init__(self):
                     self.alias_map = {}  # e.g., qb -> qubit
 
                 def visit_ImportFrom(self, node):
                     if node.module == 'cudaq':
                         for alias in node.names:
-                            self.alias_map[alias.asname or alias.name] = alias.name
+                            self.alias_map[alias.asname or
+                                           alias.name] = alias.name
                     return node
 
                 def visit_Name(self, node):
                     if node.id in self.alias_map:
-                        return ast.Attribute(
-                            value=ast.Name(id='cudaq', ctx=ast.Load()),
-                            attr=self.alias_map[node.id],
-                            ctx=node.ctx
-                        )
+                        return ast.Attribute(value=ast.Name(id='cudaq',
+                                                            ctx=ast.Load()),
+                                             attr=self.alias_map[node.id],
+                                             ctx=node.ctx)
                     return node
 
             parsed = ast.parse(src)
