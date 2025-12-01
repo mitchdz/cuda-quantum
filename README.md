@@ -44,7 +44,6 @@ flowchart TD
 
     finalize[Transfer data to data repository]
 
-
     Github --> GithubRunner
 
     subgraph GithubRunner["github Runner"]
@@ -80,6 +79,8 @@ flowchart TD
 
 
     database1[(Database)]
+
+    database1 --> question["?????? How do we want to visualize data? PowerBI/grafana/ect..."]
 ```
 
 The contents of the file `perf/COMMIT_SHA` in the commit will be:
