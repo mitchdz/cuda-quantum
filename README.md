@@ -18,69 +18,50 @@ config:
     titleColor: '#76B900'
 ---
 flowchart TD
-    Github[Github perf.yml Workflow triggered]
+    GitHub[GitHub perf.yml workflow triggered]
 
-    Workflow("`Create a new branch bot/**WORKFLOW_ID**/perf`")
-
-    commit("`Create a new commit
-    ghcr.io/nvidia/cuda-quantum@sha256:**COMMIT_SHA**`")
-
-    %% contents("`perf/cuda-quantum/**COMMIT_SHA**`")
-    contents["create file perf/**COMMIT_SHA** with metadata"]
-
-    ssh[ssh into perf runner]
-    
-    bash[Start bash script with parameters to queue job]
-
-    prepare[Read the new perf commit title/contents to fill metadata]
-
-    wait1{Wait for gitlab to sync }
-
-    wait2{Wait for slurm job to run}
-
-    slurm[start an sbatch job for the right performance test]
-
-    cleanup[Clean up and check that performance run was executed successfully]
-
-    finalize[Transfer data to data repository]
-
-    Github --> GithubRunner
-
-    subgraph GithubRunner["github Runner"]
+    subgraph GitHubRunner["GitHub runner"]
         direction TB
+        Workflow["Create branch bot/**WORKFLOW_ID**/perf"]
+        Commit["Create commit with image ref: ghcr.io/nvidia/cuda-quantum@sha256:**COMMIT_SHA**"]
+        Contents["Create file perf/**COMMIT_SHA** with metadata"]
 
-        Workflow --> commit
-        commit --> contents
-        end
-    GithubRunner e1@--> wait1
-    e1@{ animation: fast }
-
-    wait1 e2@--> gitlab
-    e2@{ animation: fast }
-
-    subgraph gitlab["gitlab Runner"]
-        direction TB
-
-        prepare --> ssh
+        Workflow --> Commit --> Contents
     end
-    gitlab --> perfRunner
 
-    subgraph perfRunner["Perf Runner"]
+    GitHub --> GitHubRunner
+
+    WaitGitLab{Wait for GitLab mirror to sync}
+
+    GitHubRunner --> WaitGitLab
+
+    subgraph GitLabRunner["GitLab runner"]
         direction TB
+        Prepare["Read perf commit contents to build job metadata"]
+        SSH["SSH into perf runner"]
 
-        bash --> slurm
-        slurm e3@--> wait2
-        e3@{ animation: fast }
-        wait2 e4@--> cleanup
-        e4@{ animation: fast }
-        cleanup --> finalize
+        Prepare --> SSH
     end
-    perfRunner --> database1
 
+    WaitGitLab --> GitLabRunner
 
-    database1[(Database)]
+    subgraph PerfRunner["Perf runner"]
+        direction TB
+        Bash["Start bash script with parameters to queue job"]
+        Slurm["Start sbatch job for selected performance test"]
+        WaitSlurm{Wait for Slurm job to complete}
+        Cleanup["Clean up and verify performance run"]
+        Finalize["Transfer data to data repository"]
 
-    database1 --> question["?????? How do we want to visualize data? PowerBI/grafana/ect..."]
+        Bash --> Slurm --> WaitSlurm --> Cleanup --> Finalize
+    end
+
+    GitLabRunner --> PerfRunner
+
+    Database[(Database)]
+    Visualize["How do we want to visualize data? Grafana / Power BI / etc."]
+
+    PerfRunner --> Database --> Visualize
 ```
 
 The contents of the file `perf/COMMIT_SHA` in the commit will be:
