@@ -24,7 +24,7 @@ flowchart TD
         direction TB
         Workflow["Create branch bot/**WORKFLOW_ID**/perf"]
         Commit["Create commit with image ref: ghcr.io/nvidia/cuda-quantum@sha256:**COMMIT_SHA**"]
-        Contents["Create file perf/**COMMIT_SHA** with metadata"]
+        Contents["Create file perf/staging/**COMMIT_SHA** with metadata"]
 
         Workflow --> Commit --> Contents
     end
@@ -64,7 +64,7 @@ flowchart TD
     PerfRunner --> Database --> Visualize
 ```
 
-The contents of the file `perf/COMMIT_SHA` in the commit will be:
+The contents of the file `perf//staging/COMMIT_SHA` in the commit will be:
 ```yaml
 source-sha: 9db48592d03ea7478b20d8785447b02411c68de3
 cuda-quantum-image: nvcr.io/nvidia/nightly/cuda-quantum@sha256:1b66c98db7cf9f1bdc1376d96ae42308316dd748695898efcf54a0190c7b3292
