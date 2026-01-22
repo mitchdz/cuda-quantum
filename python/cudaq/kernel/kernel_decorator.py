@@ -248,6 +248,8 @@ class PyKernelDecorator(object):
             del self.qkeModule
         if self.nvqModule:
             del self.nvqModule
+        if hasattr(self, 'parentFrame'):
+            del self.parentFrame
 
     def signatureWithCallables(self):
         """

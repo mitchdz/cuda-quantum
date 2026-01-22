@@ -214,19 +214,25 @@ def recover_value_of_or_none(name, resMod):
         drop = 0
         for frameinfo in inspect.stack():
             frame = frameinfo.frame
-            if 'self' in frame.f_locals:
-                if isa_kernel_decorator(frame.f_locals['self']):
-                    return drop
+            try:
+                if 'self' in frame.f_locals:
+                    if isa_kernel_decorator(frame.f_locals['self']):
+                        return drop
+            finally:
+                del frame
             drop = drop + 1
         return drop
 
     drop = drop_front()
     for frameinfo in inspect.stack()[drop:]:
         frame = frameinfo.frame
-        if name in frame.f_locals:
-            return frame.f_locals[name]
-        if name in frame.f_globals:
-            return frame.f_globals[name]
+        try:
+            if name in frame.f_locals:
+                return frame.f_locals[name]
+            if name in frame.f_globals:
+                return frame.f_globals[name]
+        finally:
+            del frame
     return None
 
 

@@ -229,14 +229,17 @@ def recover_kernel_decorator(name):
     from .kernel_decorator import isa_kernel_decorator
     for frameinfo in inspect.stack():
         frame = frameinfo.frame
-        if name in frame.f_locals:
-            if isa_kernel_decorator(frame.f_locals[name]):
-                return frame.f_locals[name]
-            return None
-        if name in frame.f_globals:
-            if isa_kernel_decorator(frame.f_globals[name]):
-                return frame.f_globals[name]
-            return None
+        try:
+            if name in frame.f_locals:
+                if isa_kernel_decorator(frame.f_locals[name]):
+                    return frame.f_locals[name]
+                return None
+            if name in frame.f_globals:
+                if isa_kernel_decorator(frame.f_globals[name]):
+                    return frame.f_globals[name]
+                return None
+        finally:
+            del frame
     return None
 
 
