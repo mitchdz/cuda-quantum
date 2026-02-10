@@ -44,6 +44,8 @@ def test_state_vector_simple():
     # Data type needs to be the same as the internal state vector
     want_state = np.array([1. / np.sqrt(2.), 0., 0., 1. / np.sqrt(2.)],
                           dtype=dtype)
+    # Direct NumPy conversion should work without StateMemoryView.
+    assert np.allclose(want_state, np.array(got_state_), atol=1e-6)
 
     # Check the indexing operators on the State class
     # while also checking their values
@@ -143,6 +145,8 @@ def test_state_density_matrix_simple():
     want_state = np.array([[0.5, 0.0, 0.0, 0.5], [0.0, 0.0, 0.0, 0.0],
                            [0.0, 0.0, 0.0, 0.0], [0.5, 0.0, 0.0, 0.5]],
                           dtype=np.complex128)
+    # Direct NumPy conversion should work without StateMemoryView.
+    assert np.allclose(want_state, np.array(got_state_), atol=1e-6)
 
     # Check the indexing operators on the State class
     # while also checking their values

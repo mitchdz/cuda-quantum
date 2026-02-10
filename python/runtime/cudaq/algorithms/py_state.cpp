@@ -15,6 +15,7 @@
 #include "runtime/cudaq/platform/py_alt_launch_kernel.h"
 #include "utils/OpaqueArguments.h"
 #include "mlir/Bindings/Python/PybindAdaptors.h"
+#include <type_traits>
 
 using namespace cudaq;
 
@@ -350,6 +351,103 @@ void cudaq::bindPyState(py::module &mod, LinkedLibraryHolder &holder) {
           "For vector-like state data, return the number of state vector "
           "elements.")
       .def(
+          "__array__",
+          [](py::object selfObj, py::object dtype) {
+            auto &self = selfObj.cast<state &>();
+            if (self.get_num_tensors() != 1)
+              throw std::runtime_error(
+                  "NumPy interop is only supported for vector and matrix state "
+                  "data.");
+
+            auto tensor = self.get_tensor();
+            const auto &shapeU = tensor.extents;
+            if (shapeU.size() != 1 && shapeU.size() != 2)
+              throw std::runtime_error(
+                  "NumPy interop is only supported for 1D (state vector) or 2D "
+                  "(density matrix) state data.");
+
+            // Convert shape to ssize_t as expected by NumPy.
+            std::vector<py::ssize_t> shape;
+            shape.reserve(shapeU.size());
+            for (auto s : shapeU)
+              shape.emplace_back(static_cast<py::ssize_t>(s));
+
+            // Determine dtype + itemsize.
+            const auto precision = self.get_precision();
+            const std::size_t numElements = tensor.get_num_elements();
+
+            // For CPU-resident state data we can hand back a (read-only) view
+            // into the underlying tensor memory with lifetime tied to the
+            // Python state object. For GPU-resident state data we must do a
+            // bulk device-to-host transfer and tie the buffer lifetime to a
+            // capsule.
+            auto makeArrayFromPtr = [&](auto *ptr,
+                                        py::handle base) -> py::array {
+              using T = std::decay_t<decltype(*ptr)>;
+              const py::dtype dt = py::dtype::of<T>();
+              const py::ssize_t itemsize = static_cast<py::ssize_t>(sizeof(T));
+              if (shape.size() == 1) {
+                py::array arr(dt, shape, {itemsize}, ptr, base);
+                arr.attr("setflags")(py::arg("write") = false);
+                return arr;
+              }
+              // 2D: row-major contiguous
+              py::array arr(dt, shape,
+                            {itemsize * shape[1], itemsize}, // strides
+                            ptr, base);
+              arr.attr("setflags")(py::arg("write") = false);
+              return arr;
+            };
+
+            py::array out;
+            if (self.is_on_gpu()) {
+              if (precision == SimulationState::precision::fp32) {
+                using T = std::complex<float>;
+                auto *hostData = new T[numElements];
+                {
+                  py::gil_scoped_release release;
+                  self.to_host(hostData, numElements);
+                }
+                py::capsule cap(hostData,
+                                [](void *p) { delete[] static_cast<T *>(p); });
+                out = makeArrayFromPtr(hostData, cap);
+              } else {
+                using T = std::complex<double>;
+                auto *hostData = new T[numElements];
+                {
+                  py::gil_scoped_release release;
+                  self.to_host(hostData, numElements);
+                }
+                py::capsule cap(hostData,
+                                [](void *p) { delete[] static_cast<T *>(p); });
+                out = makeArrayFromPtr(hostData, cap);
+              }
+            } else {
+              if (precision == SimulationState::precision::fp32) {
+                using T = std::complex<float>;
+                out = makeArrayFromPtr(reinterpret_cast<T *>(tensor.data),
+                                       selfObj);
+              } else {
+                using T = std::complex<double>;
+                out = makeArrayFromPtr(reinterpret_cast<T *>(tensor.data),
+                                       selfObj);
+              }
+            }
+
+            // NumPy calls __array__(dtype) with dtype possibly set.
+            if (!dtype.is_none()) {
+              py::module_ np = py::module_::import("numpy");
+              return np.attr("asarray")(out, py::arg("dtype") = dtype);
+            }
+            return out;
+          },
+          py::arg("dtype") = py::none(),
+          R"#(NumPy array interface for this state.
+
+If the underlying state is on the GPU, this performs a bulk device-to-host
+transfer. For CPU state data, this returns a read-only view into the underlying
+tensor memory.)#")
+      .def(
           "num_qubits", [](state &self) { return self.get_num_qubits(); },
           "Returns the number of qubits represented by this state.")
       .def(
@@ -521,11 +619,11 @@ void cudaq::bindPyState(py::module &mod, LinkedLibraryHolder &holder) {
           "Return all the tensors that comprise this state representation.")
       .def(
           "__getitem__",
-          [](state &s, int idx) {
+          [](state &s, py::ssize_t idx) {
             // Support Pythonic negative index
             if (idx < 0)
-              idx += (1 << s.get_num_qubits());
-            return s[idx];
+              idx += static_cast<py::ssize_t>(s.get_tensor().extents[0]);
+            return s[static_cast<std::size_t>(idx)];
           },
           R"#(Return the `index`-th element of the state vector.
           
@@ -785,11 +883,11 @@ index pair.
                                {dataTypeSize});
       })
       .def("__getitem__",
-           [](state_view &s, int idx) {
+           [](state_view &s, py::ssize_t idx) {
              // Support Pythonic negative index
              if (idx < 0)
-               idx += (1 << s.get_num_qubits());
-             return s[idx];
+               idx += static_cast<py::ssize_t>(s.get_tensor().extents[0]);
+             return s[static_cast<std::size_t>(idx)];
            })
       .def("__getitem__",
            [](state_view &s, std::vector<int> idx) {

@@ -40,13 +40,16 @@ def test_state_vector_simple():
         x.ctrl(qubits[0], qubits[1])
 
     # Get the quantum state, which should be a vector.
-    got_state = cudaq.StateMemoryView(cudaq.get_state(bell))
+    got_state_ = cudaq.get_state(bell)
+    got_state = cudaq.StateMemoryView(got_state_)
 
     want_state = cudaq.State.from_data(
         np.array([1. / np.sqrt(2.), 0., 0., 1. / np.sqrt(2.)],
                  dtype=np.complex128))
 
     assert len(want_state) == 4
+    # Direct NumPy conversion should work without StateMemoryView.
+    assert np.allclose(np.array(got_state_), np.array(got_state), atol=1e-6)
 
     # Check the indexing operators on the State class
     # while also checking their values
