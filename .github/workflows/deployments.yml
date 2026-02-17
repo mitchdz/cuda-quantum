@@ -188,6 +188,10 @@ jobs:
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_READONLY_TOKEN: ${{ secrets.DOCKERHUB_READONLY_TOKEN }}
+      GHCR_ALT_USER: ${{ secrets.GHCR_ALT_USER }}
+      GHCR_ALT_TOKEN: ${{ secrets.GHCR_ALT_TOKEN }}
+      GHCR_ALT_USER_2: ${{ secrets.GHCR_ALT_USER_2 }}
+      GHCR_ALT_TOKEN_2: ${{ secrets.GHCR_ALT_TOKEN_2 }}
     with:
       platforms: ${{ fromJson(needs.metadata.outputs.platforms)[format('{0}', matrix.platform)].docker_flag }}
       dockerfile: build/devdeps.Dockerfile
@@ -218,6 +222,8 @@ jobs:
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_READONLY_TOKEN: ${{ secrets.DOCKERHUB_READONLY_TOKEN }}
+      GHCR_ALT_USER: ${{ secrets.GHCR_ALT_USER }}
+      GHCR_ALT_TOKEN: ${{ secrets.GHCR_ALT_TOKEN }}
     with:
       platforms: ${{ fromJson(needs.metadata.outputs.platforms)[format('{0}', matrix.platform)].docker_flag }}
       dockerfile: build/devdeps.manylinux.Dockerfile
@@ -250,6 +256,8 @@ jobs:
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_READONLY_TOKEN: ${{ secrets.DOCKERHUB_READONLY_TOKEN }}
+      GHCR_ALT_USER: ${{ secrets.GHCR_ALT_USER }}
+      GHCR_ALT_TOKEN: ${{ secrets.GHCR_ALT_TOKEN }}
     with:
       platforms: ${{ fromJson(needs.metadata.outputs.platforms)[format('{0}', matrix.platform)].docker_flag }}
       dockerfile: build/assets.Dockerfile
@@ -281,6 +289,8 @@ jobs:
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_READONLY_TOKEN: ${{ secrets.DOCKERHUB_READONLY_TOKEN }}
+      GHCR_ALT_USER: ${{ secrets.GHCR_ALT_USER }}
+      GHCR_ALT_TOKEN: ${{ secrets.GHCR_ALT_TOKEN }}
     with:
       platforms: ${{ fromJson(needs.metadata.outputs.platforms)[format('{0}', matrix.platform)].docker_flag }}
       dockerfile: build/devdeps.ompi.Dockerfile
@@ -369,6 +379,8 @@ jobs:
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_READONLY_TOKEN: ${{ secrets.DOCKERHUB_READONLY_TOKEN }}
+      GHCR_ALT_USER: ${{ secrets.GHCR_ALT_USER }}
+      GHCR_ALT_TOKEN: ${{ secrets.GHCR_ALT_TOKEN }}
     with:
       platforms: ${{ fromJson(needs.metadata.outputs.platforms)[format('{0}', matrix.platform)].docker_flag }}
       dockerfile: build/devcontainer.Dockerfile
@@ -782,6 +794,8 @@ jobs:
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_READONLY_TOKEN: ${{ secrets.DOCKERHUB_READONLY_TOKEN }}
+      GHCR_ALT_USER: ${{ secrets.GHCR_ALT_USER }}
+      GHCR_ALT_TOKEN: ${{ secrets.GHCR_ALT_TOKEN }}
     with:
       platform: ${{ fromJson(needs.metadata.outputs.platforms)[format('{0}', matrix.platform)].docker_flag }}
       python_version: ${{ matrix.python_version }}
@@ -802,6 +816,8 @@ jobs:
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_READONLY_TOKEN: ${{ secrets.DOCKERHUB_READONLY_TOKEN }}
+      GHCR_ALT_USER: ${{ secrets.GHCR_ALT_USER }}
+      GHCR_ALT_TOKEN: ${{ secrets.GHCR_ALT_TOKEN }}
     with:
       platform: ${{ fromJson(needs.metadata.outputs.platforms)[format('{0}', matrix.platform)].docker_flag }}
       platform_base_image: ${{ fromJson(needs.metadata.outputs.platforms)[format('{0}', matrix.platform)].minimal_base_image }}

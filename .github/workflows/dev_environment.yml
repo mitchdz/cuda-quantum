@@ -78,6 +78,12 @@ on:
         required: true
       DOCKERHUB_READONLY_TOKEN:
         required: true
+      # Optional: alternate GHCR tokens (PATs from bot/different accounts) to spread
+      # rate limits (429). Set vars.GHCR_ALT_TOKEN_COUNT to 1 or 2 when using these.
+      GHCR_ALT_USER:
+        required: false
+      GHCR_ALT_TOKEN:
+        required: false
 
 name: CUDA Quantum cached dev images
 
@@ -240,12 +246,43 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_READONLY_TOKEN }}
 
+      # Spread GHCR rate limits (429) by using alternate tokens when configured.
+      # Set vars.GHCR_ALT_TOKEN_COUNT to 1 or 2 and add the corresponding secrets.
+      - name: Select GHCR credentials
+        id: ghcr_creds
+        run: |
+          image_id='${{ needs.metadata.outputs.image_id }}'
+          count=${{ vars.GHCR_ALT_TOKEN_COUNT || 0 }}
+          n=$((count + 1))
+          idx=$(printf '%s' "$image_id" | cksum | awk -v n="$n" '{print $1 % n}')
+          use_alt=0
+          if [ "$idx" -eq 1 ] && [ -n "${{ secrets.GHCR_ALT_USER }}" ]; then
+            use_alt=1
+          elif [ "$idx" -eq 2 ] && [ -n "${{ secrets.GHCR_ALT_USER_2 }}" ]; then
+            use_alt=2
+          fi
+          if [ "$use_alt" -eq 1 ]; then
+            echo "username=${{ secrets.GHCR_ALT_USER }}" >> $GITHUB_OUTPUT
+            echo "password=${{ secrets.GHCR_ALT_TOKEN }}" >> $GITHUB_OUTPUT
+          elif [ "$use_alt" -eq 2 ]; then
+            echo "username=${{ secrets.GHCR_ALT_USER_2 }}" >> $GITHUB_OUTPUT
+            echo "password=${{ secrets.GHCR_ALT_TOKEN_2 }}" >> $GITHUB_OUTPUT
+          else
+            echo "username=${{ github.actor }}" >> $GITHUB_OUTPUT
+            echo "password=${{ github.token }}" >> $GITHUB_OUTPUT
+          fi
+
       - name: Log in to GitHub CR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ github.token }}
+          username: ${{ steps.ghcr_creds.outputs.username }}
+          password: ${{ steps.ghcr_creds.outputs.password }}
+
+      # Stagger GHCR requests in merge_group to reduce simultaneous pulls
+      - name: Stagger GHCR requests
+        if: github.event_name == 'merge_group'
+        run: sleep $((RANDOM % 121))
 
       - name: Determine cache locations
         id: cache
@@ -313,6 +350,11 @@ jobs:
               fi
               echo "type=registry,ref=${registry_cache}-${cache_id}-${platform_id}:${registry_cache_base}"
               echo "type=registry,ref=${nvidia_registry_cache}-${cache_id}-${platform_id}:${registry_cache_base}"
+              # Optional: secondary registry (e.g. Docker Hub) to spread GHCR rate limits.
+              # Set vars.DOCKERHUB_CACHE_ORG and push cache there (e.g. via sync job or cache_to).
+              if [ -n "${{ vars.DOCKERHUB_CACHE_ORG }}" ]; then
+                echo "type=registry,ref=docker.io/${{ vars.DOCKERHUB_CACHE_ORG }}/buildcache-cuda-quantum-${cache_id}-${platform_id}:${registry_cache_base}"
+              fi
             done
             echo multiline
           } >> $GITHUB_OUTPUT
@@ -360,6 +402,37 @@ jobs:
           push: ${{ steps.cache.outputs.push_to_registry == 'true' }}
           outputs: ${{ steps.cache.outputs.docker_output }}
 
+      - name: Wait before retry
+        if: failure() && steps.docker_build.outputs.digest == ''
+        run: sleep 90
+
+      - name: Build ${{ needs.metadata.outputs.image_title }} image (retry)
+        id: docker_build_retry
+        if: failure() && steps.docker_build.outputs.digest == ''
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/${{ needs.metadata.outputs.dockerfile }}
+          target: ${{ inputs.build_target }}
+          build-args: |
+            ${{ inputs.build_args }}
+          tags: ${{ needs.metadata.outputs.image_tags }}
+          labels: ${{ needs.metadata.outputs.image_labels }}
+          platforms: ${{ inputs.platforms }}
+          cache-from: |
+            ${{ inputs.additional_build_caches }}
+            ${{ steps.cache.outputs.cache_from_gh }}
+            ${{ steps.cache.outputs.cache_from_registry }}
+          cache-to: ${{ steps.cache.outputs.cache_to }}
+          push: ${{ steps.cache.outputs.push_to_registry == 'true' }}
+          outputs: ${{ steps.cache.outputs.docker_output }}
+
+      - name: Set build digest
+        id: build_digest
+        if: success() || steps.docker_build_retry.outputs.digest != ''
+        run: |
+          echo "digest=${{ steps.docker_build.outputs.digest || steps.docker_build_retry.outputs.digest }}" >> $GITHUB_OUTPUT
+
       - name: Install Cosign
         if: steps.cache.outputs.push_to_registry == 'true'
         uses: sigstore/cosign-installer@v3.3.0
@@ -367,9 +440,9 @@ jobs:
           cosign-release: 'v2.2.2'
 
       - name: Sign image with GitHub OIDC Token
-        if: steps.cache.outputs.push_to_registry == 'true'
+        if: steps.cache.outputs.push_to_registry == 'true' && steps.build_digest.outputs.digest != ''
         env:
-          DIGEST: ${{ steps.docker_build.outputs.digest }}
+          DIGEST: ${{ steps.build_digest.outputs.digest }}
           TAGS: ${{ needs.metadata.outputs.image_tags }}
         run: cosign sign --yes --recursive "${TAGS}@${DIGEST}"
 
@@ -391,55 +464,59 @@ jobs:
 
       - name: Check for existing image
         id: uploaded_image
-        if: inputs.update_registry_cache == '' && inputs.build_target == ''
-        run: |
-          if ${{ inputs.environment != '' }}; then
-            image_hash=${{ needs.metadata.outputs.image_name }}@${{ steps.docker_build.outputs.digest }}
-            echo "image_hash=$image_hash" >> $GITHUB_OUTPUT
-          else
-            # Check if an image with the same layers exists on the registry.
-            # If so, use that image instead of uploading a tar cache.
-            load_output=`docker load --input "${{ steps.cache.outputs.tar_archive }}"`
-            built_image=`echo "$load_output" | grep -o 'Loaded image: \S*:\S*' | head -1 | cut -d ' ' -f 3`
-            expected_layers=`docker inspect $built_image --format='{{json .RootFS}}' | jq '.Layers[]'`
+        if: inputs.update_registry_cache == '' && inputs.build_target == '' && steps.build_digest.outputs.digest != ''
+        uses: ./.github/actions/retry-ghcr
+        with:
+          max_attempts: 3
+          retry_wait_seconds: 90
+          command: |
+            if ${{ inputs.environment != '' }}; then
+              image_hash=${{ needs.metadata.outputs.image_name }}@${{ steps.build_digest.outputs.digest }}
+              echo "image_hash=$image_hash" >> $GITHUB_OUTPUT
+            else
+              # Check if an image with the same layers exists on the registry.
+              # If so, use that image instead of uploading a tar cache.
+              load_output=`docker load --input "${{ steps.cache.outputs.tar_archive }}"`
+              built_image=`echo "$load_output" | grep -o 'Loaded image: \S*:\S*' | head -1 | cut -d ' ' -f 3`
+              expected_layers=`docker inspect $built_image --format='{{json .RootFS}}' | jq '.Layers[]'`
 
-            # While we can inspect an image manifest without pulling the image using either
-            # `docker manifest inspect` for new enough docker versions, or `regctl image manifest`,
-            # the digests for the layers are computed based on the *compressed* layers (blobs on the registry).
-            # It is not possible to compare those to the layers listed for the local tar archive, 
-            # since inspecting the local image necessarily identifies layers based on the content of the 
-            # *uncompressed* archive. To compare a local image against one pushed to the registry, 
-            # we hence first need to download the one from the registry.
-            # See also:
-            # - https://stackoverflow.com/questions/61366738/how-are-the-docker-image-layer-ids-derived/69688979#69688979
-            # - https://github.com/docker/cli/issues/3350.
+              # While we can inspect an image manifest without pulling the image using either
+              # `docker manifest inspect` for new enough docker versions, or `regctl image manifest`,
+              # the digests for the layers are computed based on the *compressed* layers (blobs on the registry).
+              # It is not possible to compare those to the layers listed for the local tar archive,
+              # since inspecting the local image necessarily identifies layers based on the content of the
+              # *uncompressed* archive. To compare a local image against one pushed to the registry,
+              # we hence first need to download the one from the registry.
+              # See also:
+              # - https://stackoverflow.com/questions/61366738/how-are-the-docker-image-layer-ids-derived/69688979#69688979
+              # - https://github.com/docker/cli/issues/3350.
 
-            remote_image=ghcr.io/${{ needs.metadata.outputs.owner }}/${{ vars.packages_prefix }}${{ needs.metadata.outputs.image_title }}
-            if ${{ needs.metadata.outputs.pr_number != '' }}; then
-              remote_image=${remote_image}-ci
-            fi
-            remote_tag=${{ needs.metadata.outputs.tag_prefix }}${{ steps.cache.outputs.registry_cache_base }}${{ needs.metadata.outputs.tag_suffix }}
-            echo "Trying to pull remote tag $remote_image:$remote_tag."
-            docker pull $remote_image:$remote_tag || true
-            if [ "$(docker images -q $remote_image:$remote_tag 2> /dev/null)" == "" ]; then
-              platform_tag=${{ needs.metadata.outputs.platform_tag }}
-              remote_tag=`echo $remote_tag | sed s/"${platform_tag:+$platform_tag-}"//`
+              remote_image=ghcr.io/${{ needs.metadata.outputs.owner }}/${{ vars.packages_prefix }}${{ needs.metadata.outputs.image_title }}
+              if ${{ needs.metadata.outputs.pr_number != '' }}; then
+                remote_image=${remote_image}-ci
+              fi
+              remote_tag=${{ needs.metadata.outputs.tag_prefix }}${{ steps.cache.outputs.registry_cache_base }}${{ needs.metadata.outputs.tag_suffix }}
               echo "Trying to pull remote tag $remote_image:$remote_tag."
               docker pull $remote_image:$remote_tag || true
-            fi
+              if [ "$(docker images -q $remote_image:$remote_tag 2> /dev/null)" == "" ]; then
+                platform_tag=${{ needs.metadata.outputs.platform_tag }}
+                remote_tag=`echo $remote_tag | sed s/"${platform_tag:+$platform_tag-}"//`
+                echo "Trying to pull remote tag $remote_image:$remote_tag."
+                docker pull $remote_image:$remote_tag || true
+              fi
 
-            if [ "$(docker images -q $remote_image:$remote_tag 2> /dev/null)" != "" ]; then
-              remote_hash=`docker inspect $remote_image:$remote_tag --format='{{index .RepoDigests 0}}'`
-              echo "Checking layers of pulled image $remote_hash."
-              existing_layers=`docker inspect $remote_hash --format='{{json .RootFS}}' | jq '.Layers[]'`
+              if [ "$(docker images -q $remote_image:$remote_tag 2> /dev/null)" != "" ]; then
+                remote_hash=`docker inspect $remote_image:$remote_tag --format='{{index .RepoDigests 0}}'`
+                echo "Checking layers of pulled image $remote_hash."
+                existing_layers=`docker inspect $remote_hash --format='{{json .RootFS}}' | jq '.Layers[]'`
 
-              echo "Required image layers:" && echo "$expected_layers"
-              echo "Latest version on GHCR:" && echo "$existing_layers"
-              if [ "$expected_layers" == "$existing_layers" ]; then 
-                echo "image_hash=$remote_hash" >> $GITHUB_OUTPUT
-              fi  
+                echo "Required image layers:" && echo "$expected_layers"
+                echo "Latest version on GHCR:" && echo "$existing_layers"
+                if [ "$expected_layers" == "$existing_layers" ]; then
+                  echo "image_hash=$remote_hash" >> $GITHUB_OUTPUT
+                fi
+              fi
             fi
-          fi
 
       - name: Cache ${{ needs.metadata.outputs.image_title }} image
         id: cache_upload

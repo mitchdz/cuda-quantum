@@ -88,6 +88,8 @@ jobs:
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_READONLY_TOKEN: ${{ secrets.DOCKERHUB_READONLY_TOKEN }}
+      GHCR_ALT_USER: ${{ secrets.GHCR_ALT_USER }}
+      GHCR_ALT_TOKEN: ${{ secrets.GHCR_ALT_TOKEN }}
     with:
       platforms: linux/${{ matrix.platform }}
       dockerfile: build/devdeps.Dockerfile
@@ -112,6 +114,8 @@ jobs:
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_READONLY_TOKEN: ${{ secrets.DOCKERHUB_READONLY_TOKEN }}
+      GHCR_ALT_USER: ${{ secrets.GHCR_ALT_USER }}
+      GHCR_ALT_TOKEN: ${{ secrets.GHCR_ALT_TOKEN }}
     with:
       platforms: linux/${{ matrix.platform }}
       dockerfile: build/devdeps.manylinux.Dockerfile
@@ -140,6 +144,8 @@ jobs:
     secrets:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_READONLY_TOKEN: ${{ secrets.DOCKERHUB_READONLY_TOKEN }}
+      GHCR_ALT_USER: ${{ secrets.GHCR_ALT_USER }}
+      GHCR_ALT_TOKEN: ${{ secrets.GHCR_ALT_TOKEN }}
     with:
       platforms: linux/${{ matrix.platform }}
       dockerfile: build/assets.Dockerfile

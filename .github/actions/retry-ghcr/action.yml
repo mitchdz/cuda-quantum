@@ -1,0 +1,65 @@
+# Retry a command that may hit GHCR (ghcr.io) rate limits (429 Too Many Requests).
+# Use this for any step that pulls from or pushes to GitHub Container Registry.
+#
+# Example (run step):
+#   - uses: ./.github/actions/retry-ghcr
+#     id: pull_image
+#     with:
+#       command: docker pull ghcr.io/org/image:tag
+#
+# Example (multiline script):
+#   - uses: ./.github/actions/retry-ghcr
+#     with:
+#       max_attempts: 4
+#       retry_wait_seconds: 120
+#       command: |
+#         docker pull ghcr.io/org/image:tag
+#         docker tag ghcr.io/org/image:tag local:tag
+#
+# For "uses:" steps (e.g. docker/build-push-action), add a duplicate retry step
+# that runs only on failure, as in dev_environment.yml.
+name: retry-ghcr
+description: Run a command with retries and backoff to handle GHCR 429 rate limits
+
+inputs:
+  command:
+    description: Command or script to run (supports multiline). Avoid unescaped ');' in the script.
+    required: true
+  max_attempts:
+    description: Maximum number of attempts (default 3)
+    required: false
+    default: '3'
+  retry_wait_seconds:
+    description: Seconds to wait between attempts (default 90). GHCR often suggests ~60s on 429.
+    required: false
+    default: '90'
+
+runs:
+  using: composite
+  steps:
+    - name: Run with GHCR retry
+      shell: bash
+      env:
+        USER_CMD: ${{ inputs.command }}
+        MAX_ATTEMPTS: ${{ inputs.max_attempts }}
+        RETRY_WAIT: ${{ inputs.retry_wait_seconds }}
+      run: |
+        # Write command to a file so multiline and special chars are preserved.
+        # Delimiter must not appear in the command.
+        __DELIM__='RETRY_GHCR_SCRIPT_END_7f3a'
+        cat << "$__DELIM__" > /tmp/retry_ghcr_cmd.sh
+        $USER_CMD
+        $__DELIM__
+        for attempt in $(seq 1 "$MAX_ATTEMPTS"); do
+          echo "Attempt $attempt of $MAX_ATTEMPTS"
+          if bash /tmp/retry_ghcr_cmd.sh; then
+            echo "Succeeded on attempt $attempt"
+            exit 0
+          fi
+          if [ "$attempt" -lt "$MAX_ATTEMPTS" ]; then
+            echo "Waiting ${RETRY_WAIT}s before retry (GHCR rate limit backoff)"
+            sleep "$RETRY_WAIT"
+          fi
+        done
+        echo "All $MAX_ATTEMPTS attempts failed"
+        exit 1
