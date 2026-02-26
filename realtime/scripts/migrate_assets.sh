@@ -30,51 +30,41 @@ OPTIND=$__optind__
 
 mkdir -p "$target"
 
-# Generate an uninstall script that removes files installed by this script.
+# Generate uninstall script from the full payload file list (not only what we
+# move this run), so it is correct on first install and when re-running.
 uninstall_script="$target/uninstall.sh"
 target_quoted=$(printf '%q' "$target")
 
-cat > "$uninstall_script" <<EOF
-#!/bin/bash
-set -euo pipefail
-
-target=$target_quoted
-
-echo "This will remove CUDA-Q Realtime files installed under \$target."
-read -r -p "Continue? [y/N] " answer
-case "\${answer,,}" in
-  y|yes) ;;
-  *) echo "Aborted."; exit 1 ;;
-esac
-
-EOF
-
+{
+  printf '#!/bin/bash\nset -euo pipefail\n\ntarget=%s\n\n' "$target_quoted"
+  printf 'echo "This will remove CUDA-Q Realtime files installed under $target."\n'
+  printf 'read -r -p "Continue? [y/N] " answer\n'
+  printf 'case "${answer,,}" in\n  y|yes) ;;\n  *) echo "Aborted."; exit 1 ;;\nesac\n\n'
+  # List of files this installer places under $target (excluding install.sh)
+  find . -type f -print0 | while IFS= read -r -d '' file; do
+    [ "$file" = "./install.sh" ] && continue
+    # Strip leading ./
+    rel="${file#./}"
+    printf 'rm -f "$target/%s"\n' "$rel"
+  done
+  printf 'find "$target" -type d -empty -delete\n'
+} > "$uninstall_script"
 chmod a+x "$uninstall_script"
 
 echo "Migrating assets to $target..."
-echo "An uninstall script will be created at: $uninstall_script"
+echo "Uninstall script: $uninstall_script"
 
 find . -type f -print0 | while IFS= read -r -d '' file;
-do 
-    # Don't attempt to migrate the installer script itself.
-    if [ "$file" = "./install.sh" ]; then
-        continue
-    fi
+do
+    [ "$file" = "./install.sh" ] && continue
 
-    echo "Processing $file..."  
-    if [ ! -f "$target/$file" ]; then 
-        # Move the file to the target location, preserving directory structure
+    echo "Processing $file..."
+    if [ ! -f "$target/$file" ]; then
         target_path="$target/$(dirname "$file")"
         mkdir -p "$target_path"
         mv "$file" "$target_path/"
         echo "Moved $file to $target_path/"
-
-        # Record removal step for this file in the uninstall script.
-        echo "rm -f \"\$target/$file\"" >> "$uninstall_script"
     else
         echo "File $target/$file already exists, skipping."
-    fi    
+    fi
 done
-
-# Clean up now-empty directories on uninstall.
-echo 'find "$target" -type d -empty -delete' >> "$uninstall_script"
