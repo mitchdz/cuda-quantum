@@ -38,12 +38,19 @@ target_quoted=$(printf '%q' "$target")
 {
   printf '#!/bin/bash\nset -euo pipefail\n\ntarget=%s\n\n' "$target_quoted"
   printf 'echo "This will remove CUDA-Q Realtime files installed under $target."\n'
-  printf 'read -r -p "Continue? [y/N] " answer\n'
-  printf 'case "${answer,,}" in\n  y|yes) ;;\n  *) echo "Aborted."; exit 1 ;;\nesac\n\n'
-  # List of files this installer places under $target (excluding install.sh)
+  printf 'echo "The following files will be removed:"\n'
+  # List files for the user before asking for confirmation
   find . -type f -print0 | while IFS= read -r -d '' file; do
     [ "$file" = "./install.sh" ] && continue
     # Strip leading ./
+    rel="${file#./}"
+    printf 'echo "  $target/%s"\n' "$rel"
+  done
+  printf '\nread -r -p "Continue? [y/N] " answer\n'
+  printf 'case "${answer,,}" in\n  y|yes) ;;\n  *) echo "Aborted."; exit 1 ;;\nesac\n\n'
+  # Removal commands for all payload files (excluding install.sh)
+  find . -type f -print0 | while IFS= read -r -d '' file; do
+    [ "$file" = "./install.sh" ] && continue
     rel="${file#./}"
     printf 'rm -f "$target/%s"\n' "$rel"
   done
