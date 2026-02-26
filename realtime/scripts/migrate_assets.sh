@@ -48,6 +48,8 @@ target_quoted=$(printf '%q' "$target")
     printf 'rm -f "$target/%s"\n' "$rel"
   done
   printf 'find "$target" -type d -empty -delete\n'
+  printf 'rm -f "$target/uninstall.sh"\n'
+  printf 'rmdir "$target" 2>/dev/null || true\n'
 } > "$uninstall_script"
 chmod a+x "$uninstall_script"
 
