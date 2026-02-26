@@ -28,10 +28,39 @@ while getopts ":t:" opt; do
 done
 OPTIND=$__optind__
 
+mkdir -p "$target"
+
+# Generate an uninstall script that removes files installed by this script.
+uninstall_script="$target/uninstall.sh"
+target_quoted=$(printf '%q' "$target")
+
+cat > "$uninstall_script" <<EOF
+#!/bin/bash
+set -euo pipefail
+
+target=$target_quoted
+
+echo "This will remove CUDA-Q Realtime files installed under \$target."
+read -r -p "Continue? [y/N] " answer
+case "\${answer,,}" in
+  y|yes) ;;
+  *) echo "Aborted."; exit 1 ;;
+esac
+
+EOF
+
+chmod a+x "$uninstall_script"
+
 echo "Migrating assets to $target..."
+echo "An uninstall script will be created at: $uninstall_script"
 
 find . -type f -print0 | while IFS= read -r -d '' file;
 do 
+    # Don't attempt to migrate the installer script itself.
+    if [ "$file" = "./install.sh" ]; then
+        continue
+    fi
+
     echo "Processing $file..."  
     if [ ! -f "$target/$file" ]; then 
         # Move the file to the target location, preserving directory structure
@@ -39,7 +68,13 @@ do
         mkdir -p "$target_path"
         mv "$file" "$target_path/"
         echo "Moved $file to $target_path/"
+
+        # Record removal step for this file in the uninstall script.
+        echo "rm -f \"\$target/$file\"" >> "$uninstall_script"
     else
         echo "File $target/$file already exists, skipping."
     fi    
 done
+
+# Clean up now-empty directories on uninstall.
+echo 'find "$target" -type d -empty -delete' >> "$uninstall_script"
