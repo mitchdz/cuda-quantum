@@ -335,7 +335,7 @@ fi
 echo "Running core tests."
 python3 -m pytest -v -n auto "$root_folder/tests" \
     --ignore "$root_folder/tests/backends" \
-    --ignore "$root_folder/tests/dynamics/integrators" \
+    --ignore "$root_folder/tests/dynamics" \
     --ignore "$root_folder/tests/parallel" \
     --ignore "$root_folder/tests/domains"
 if [ ! $? -eq 0 ]; then
@@ -349,6 +349,16 @@ if $quick_test; then
         echo -e "\e[01;31mValidation produced errors.\e[0m" >&2
     fi
     (return 0 2>/dev/null) && return $status_sum || exit $status_sum
+fi
+
+# Run dynamics tests separately to avoid module-level set_target("dynamics")
+# in test_evolve_dynamics.py from contaminating other xdist workers.
+echo "Running dynamics tests."
+python3 -m pytest -v -n auto "$root_folder/tests/dynamics" \
+    --ignore "$root_folder/tests/dynamics/integrators"
+if [ ! $? -eq 0 ]; then
+    echo -e "\e[01;31mPython dynamics tests failed.\e[0m" >&2
+    status_sum=$((status_sum + 1))
 fi
 
 # Run backend tests (single invocation with xdist; --rootdir matches upstream import layout)

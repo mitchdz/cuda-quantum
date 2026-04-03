@@ -11,11 +11,8 @@ from cudaq import operators, boson
 
 if cudaq.num_available_gpus() == 0:
     pytest.skip("Skipping GPU tests", allow_module_level=True)
-else:
-    # Note: the test model may create state, hence need to set the target to "dynamics"
-    cudaq.set_target("dynamics")
-    from system_models import *
-    cudaq.reset_target()
+
+from system_models import *
 
 
 @pytest.fixture(autouse=True)
