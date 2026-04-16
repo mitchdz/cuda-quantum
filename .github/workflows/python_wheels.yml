@@ -25,6 +25,11 @@ on:
         required: false
         type: boolean
         default: false
+      ci_tier:
+        type: string
+        required: false
+        default: 'full'
+        description: 'CI tier: pr runs reduced validation matrix, full runs everything.'
     outputs:
       cudaq_version:
         description: "The version of the built wheels."
@@ -224,6 +229,18 @@ jobs:
         run: |
           python_config=`cat .github/workflows/config/validation_config.json | jq ".python"`
           operating_systems=`echo "$python_config" | jq '.[] | select(.version=="${{ inputs.python_version }}").operating_systems'`
+
+          # On PR tier, validate only ubuntu and redhat/ubi9 to reduce CI time.
+          # Full OS matrix runs on merge queue and main.
+          # If the filter produces an empty list (e.g. py3.13 has only fedora),
+          # keep the original list so we always validate at least one OS.
+          if [ "${{ inputs.ci_tier }}" == "pr" ]; then
+            filtered=$(echo "$operating_systems" | jq '[.[] | select(startswith("ubuntu") or startswith("redhat/ubi9"))]')
+            if [ "$(echo "$filtered" | jq 'length')" -gt 0 ]; then
+              operating_systems="$filtered"
+            fi
+          fi
+
           echo "json={\"os_images\":$(echo $operating_systems)}" >> $GITHUB_OUTPUT
 
   validation:
