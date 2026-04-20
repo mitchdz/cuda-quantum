@@ -16,6 +16,7 @@
 #include "common/FmtCore.h"
 #include "cudaq/algorithms/evolve_internal.h"
 #include "cudaq/algorithms/integrator.h"
+#include "evolve_bench_timer.h"
 #include <iterator>
 #include <random>
 #include <stdexcept>
@@ -221,9 +222,14 @@ evolveSingleImpl(const std::vector<int64_t> &dims, const schedule &schedule,
   std::vector<std::vector<double>> expectationVals;
   std::vector<cudaq::state> intermediateStates;
   for (const auto &step : schedule) {
-    integrator.integrate(step.real());
+    {
+      cudaq::bench::ScopedPhase _e(cudaq::bench::ScopedPhase::Evolve);
+      integrator.integrate(step.real());
+    }
+    cudaq::bench::recordStep(true);
     auto [t, currentState] = integrator.getState();
     if (storeIntermediateResults != cudaq::IntermediateResultSave::None) {
+      cudaq::bench::ScopedPhase _x(cudaq::bench::ScopedPhase::ExpvalCollect);
       std::vector<double> expVals;
 
       for (auto &expectation : expectations) {
@@ -253,6 +259,7 @@ evolveSingleImpl(const std::vector<int64_t> &dims, const schedule &schedule,
         cudaq::IntermediateResultSave::ExpectationValue)
       return evolve_result({finalState}, expectationVals);
 
+    cudaq::bench::ScopedPhase _x(cudaq::bench::ScopedPhase::ExpvalCollect);
     std::vector<double> expVals;
     auto *cudmState = asCudmState(finalState);
     for (auto &expectation : expectations) {
@@ -286,29 +293,39 @@ evolve_result evolveSingle(
     IntermediateResultSave storeIntermediateResults,
     std::optional<int> shotsCount) {
   LOG_API_TIME();
-  cudensitymatHandle_t handle =
-      dynamics::Context::getCurrentContext()->getHandle();
-  std::map<std::size_t, int64_t> dimensions =
-      convertToOrderedMap(dimensionsMap);
-  std::vector<int64_t> dims;
-  for (const auto &[id, dim] : dimensions)
-    dims.emplace_back(dim);
+  cudaq::bench::reset();
+  evolve_result result = [&]() {
+    cudaq::bench::ScopedPhase _total(cudaq::bench::ScopedPhase::CppTotal);
+    cudensitymatHandle_t handle =
+        dynamics::Context::getCurrentContext()->getHandle();
+    std::map<std::size_t, int64_t> dimensions =
+        convertToOrderedMap(dimensionsMap);
+    std::vector<int64_t> dims;
+    for (const auto &[id, dim] : dimensions)
+      dims.emplace_back(dim);
 
-  auto *cudmState = asCudmState(const_cast<state &>(initialState));
-  if (!cudmState->is_initialized())
-    cudmState->initialize_cudm(handle, dims, /*batchSize=*/1);
+    auto *cudmState = asCudmState(const_cast<state &>(initialState));
+    if (!cudmState->is_initialized())
+      cudmState->initialize_cudm(handle, dims, /*batchSize=*/1);
 
-  state initial_State = [&]() {
-    if (!collapseOperators.empty() && !cudmState->is_density_matrix())
-      return state(new CuDensityMatState(cudmState->to_density_matrix()));
-    return initialState;
+    state initial_State = [&]() {
+      if (!collapseOperators.empty() && !cudmState->is_density_matrix())
+        return state(new CuDensityMatState(cudmState->to_density_matrix()));
+      return initialState;
+    }();
+
+    {
+      cudaq::bench::ScopedPhase _op(cudaq::bench::ScopedPhase::OpConstruction);
+      SystemDynamics system(dims, hamiltonian, collapseOperators);
+      cudaq::integrator_helper::init_system_dynamics(integrator, system,
+                                                     schedule);
+      integrator.setState(initial_State, 0.0);
+    }
+    return evolveSingleImpl(dims, schedule, integrator, observables,
+                            storeIntermediateResults);
   }();
-
-  SystemDynamics system(dims, hamiltonian, collapseOperators);
-  cudaq::integrator_helper::init_system_dynamics(integrator, system, schedule);
-  integrator.setState(initial_State, 0.0);
-  return evolveSingleImpl(dims, schedule, integrator, observables,
-                          storeIntermediateResults);
+  cudaq::bench::flush();
+  return result;
 }
 
 /// @brief Evolve the system for a single time step.
