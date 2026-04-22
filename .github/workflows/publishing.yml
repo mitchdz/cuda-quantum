@@ -951,13 +951,18 @@ jobs:
       - name: Prepare validation
         id: validation
         run: |
-          images=`echo '${{ steps.read_json.outputs.result }}' | jq '[.image_hash[] | select(. != "")]'`
+          # Emit [{info_file, image_hash}] so downstream can pick a runner by
+          # architecture (info_file names contain 'amd64' or 'arm64').
+          images=`echo '${{ steps.read_json.outputs.result }}' | jq -c '[.image_hash | to_entries[] | select(.value != "") | {info_file: .key, image_hash: .value}]'`
           echo "docker_images=$(echo $images)" >> $GITHUB_OUTPUT
 
   image_validation:
     name: Docker image validation
     needs: [assets, cudaq_images, image_validation_config]
-    runs-on: linux-amd64-gpu-a100-latest-1
+    # Multi-GPU arm64 L4 runner is used for arm64 images so the nvidia-mgpu
+    # backend tests (mpiexec -np 4 and fp32,mgpu validation) run on real
+    # multi-GPU hardware. amd64 images stay on the single-GPU A100 runner.
+    runs-on: ${{ (contains(matrix.info.info_file, 'arm') && 'linux-arm64-gpu-l4-latest-2') || 'linux-amd64-gpu-a100-latest-1' }}
     permissions:
       contents: read
       packages: read
@@ -968,11 +973,11 @@ jobs:
 
     strategy:
       matrix:
-        image_hash: ${{ fromJson(needs.image_validation_config.outputs.docker_images) }}
+        info: ${{ fromJson(needs.image_validation_config.outputs.docker_images) }}
       fail-fast: false
 
     container:
-      image: ${{ matrix.image_hash }}
+      image: ${{ matrix.info.image_hash }}
       credentials:
         username: ${{ needs.cudaq_images.outputs.push_to_ngc != 'true' && github.actor || '$oauthtoken' }}
         password: ${{ needs.cudaq_images.outputs.push_to_ngc != 'true' && github.token || secrets.NGC_CREDENTIALS  }}
@@ -1064,7 +1069,10 @@ jobs:
   installer_validation:
     name: Installer validation
     needs: [assets, cudaq_installers]
-    runs-on: linux-amd64-gpu-a100-latest-1
+    # Multi-GPU arm64 L4 runner is used for aarch64 installers so the
+    # nvidia-mgpu backend validation runs on real multi-GPU hardware. x86_64
+    # installers stay on the single-GPU A100 runner.
+    runs-on: ${{ (matrix.arch == 'aarch64' && 'linux-arm64-gpu-l4-latest-2') || 'linux-amd64-gpu-a100-latest-1' }}
     permissions:
       contents: read
 
@@ -1072,6 +1080,7 @@ jobs:
       matrix:
         os_image: ['redhat/ubi8:8.10', 'ubuntu:24.04']
         cuda_version: ['12.6', '13.0']
+        arch: ['x86_64', 'aarch64']
       fail-fast: false
 
     container:
@@ -1096,7 +1105,7 @@ jobs:
       - name: Load installer
         uses: actions/download-artifact@v4
         with:
-          name: x86_64-cu${{ steps.config.outputs.cuda_major }}-installer
+          name: ${{ matrix.arch }}-cu${{ steps.config.outputs.cuda_major }}-installer
           path: /tmp/install
 
       - name: Runtime dependencies (apt)
@@ -1105,8 +1114,10 @@ jobs:
           apt-get update && apt-get install -y --no-install-recommends \
             wget ca-certificates libc6-dev libopenmpi-dev
           distro=`echo ${{ matrix.os_image }} | tr -d . | tr -d :`
+          # NVIDIA repos use 'sbsa' as the subfolder for aarch64.
+          repo_arch=$([ "${{ matrix.arch }}" = "aarch64" ] && echo sbsa || echo x86_64)
           CUDA_DOWNLOAD_URL=https://developer.download.nvidia.com/compute/cuda/repos
-          wget "${CUDA_DOWNLOAD_URL}/$distro/x86_64/cuda-keyring_1.1-1_all.deb"
+          wget "${CUDA_DOWNLOAD_URL}/$distro/$repo_arch/cuda-keyring_1.1-1_all.deb"
           dpkg -i cuda-keyring_1.1-1_all.deb
           cuda_version_suffix="$(echo ${{ matrix.cuda_version }} | tr . -)"
           apt-get update
@@ -1149,7 +1160,7 @@ jobs:
           mkdir -p "$install_path"
           chown cudaqtest "$install_path"
 
-          installer=install_cuda_quantum_cu$(echo ${{ matrix.cuda_version }} | cut -d . -f1).x86_64
+          installer=install_cuda_quantum_cu$(echo ${{ matrix.cuda_version }} | cut -d . -f1).${{ matrix.arch }}
           chmod +x /tmp/install/$installer
           su cudaqtest -c "bash /tmp/install/$installer --accept -- --installpath $install_path"
 
