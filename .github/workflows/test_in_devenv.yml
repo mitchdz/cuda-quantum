@@ -153,6 +153,12 @@ jobs:
             --build-arg run_tests=true \
             --target test
 
+      # TODO(phase-2): wire collect-failure-artifacts here. Requires a
+      # `diagnostics-export` target in cudaq.dev.Dockerfile that tars Testing/,
+      # CMakeError.log, .ninja_log, etc. into a stage we can extract via
+      # `--output type=local,dest=/tmp/diag`. See the existing `ccache-export`
+      # target for the pattern.
+
       - name: Test CUDA Quantum MPI Plugin Activation
         if: ${{ !inputs.skip_build }}
         run: |
@@ -164,6 +170,9 @@ jobs:
             --build-arg mpi="${{ inputs.mpi }}" \
             --build-arg run_tests=true \
             --target test-mpi
+
+      # TODO(phase-2): wire collect-failure-artifacts here too once the
+      # `diagnostics-export` Dockerfile target lands.
 
       - name: Extract ccache from build
         timeout-minutes: 15
@@ -224,7 +233,7 @@ jobs:
         with:
           name: ${{ steps.env_save.outputs.filename }}
           path: ${{ steps.env_save.outputs.output_directory }}/${{ steps.env_save.outputs.filename }}.tar
-          retention-days: 1
+          retention-days: 7
 
   build_and_test_python:
     name: Dev environment (Python)
@@ -391,6 +400,23 @@ jobs:
               exit 1
             fi
 
+      - name: Find failed test container
+        id: failed_container
+        if: ${{ failure() && !inputs.skip_build }}
+        run: |
+          # The Python build runs inside a container (via run-in-docker), so
+          # diagnostics are inside the most recently stopped container.
+          container=$(docker ps -a -q --filter ancestor=dev_env:local --latest)
+          echo "container=$container" >> $GITHUB_OUTPUT
+
+      - name: Collect failure artifacts (Python tests)
+        if: ${{ failure() && !inputs.skip_build && steps.failed_container.outputs.container != '' }}
+        uses: ./.github/actions/collect-failure-artifacts
+        with:
+          artifact-name: python-${{ steps.platform_meta.outputs.platform_id }}
+          container-name: ${{ steps.failed_container.outputs.container }}
+          build-dir: /cuda-quantum/_skbuild
+
       - name: Extract ccache from container
         timeout-minutes: 15
         continue-on-error: true
@@ -433,4 +459,4 @@ jobs:
         with:
           name: ${{ steps.env_save.outputs.filename }}
           path: ${{ steps.env_save.outputs.output_directory }}/${{ steps.env_save.outputs.filename }}.tar
-          retention-days: 1
+          retention-days: 7

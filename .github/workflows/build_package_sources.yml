@@ -116,7 +116,7 @@ jobs:
         with:
           name: package-source-diff-cu${{ matrix.cuda }}-${{ matrix.release }}.zip
           path: package-source-diff/
-          retention-days: 1
+          retention-days: 7
 
   diff-macos-package:
     name: Diff pip packages (macOS arm64)

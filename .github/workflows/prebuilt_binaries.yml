@@ -215,6 +215,11 @@ jobs:
             ${{ steps.config.outputs.additional_build_caches }}
           push: true
 
+      # TODO(phase-2): wire collect-failure-artifacts here. Requires a
+      # `diagnostics-export` target in assets.Dockerfile mirroring the
+      # `ccache-export` pattern, to extract build logs via
+      # `--output type=local,dest=/tmp/diag` on failure.
+
       - name: Extract ccache from build
         if: ${{ !inputs.skip_build }}
         timeout-minutes: 15
@@ -274,7 +279,7 @@ jobs:
         with:
           name: ${{ steps.config.outputs.artifact_name }}
           path: /tmp/install
-          retention-days: 1
+          retention-days: 7
           if-no-files-found: error
 
   build_openmpi:
@@ -647,7 +652,7 @@ jobs:
         with:
           name: ${{ steps.job_summary.outputs.artifact_id }}_${{ steps.job_summary.outputs.os_id }}_validation
           path: ${{ steps.job_summary.outputs.validation_summary }}
-          retention-days: 1
+          retention-days: 7
           if-no-files-found: warn
 
   staging:

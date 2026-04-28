@@ -28,5 +28,5 @@ jobs:
         with:
           name: metadata_pr
           path: metadata.txt
-          retention-days: 1
+          retention-days: 7
           if-no-files-found: error

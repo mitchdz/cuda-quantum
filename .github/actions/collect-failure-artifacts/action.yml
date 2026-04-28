@@ -1,0 +1,107 @@
+name: collect-failure-artifacts
+description: >
+  Collect build and test diagnostics from a failing job and upload them as a
+  GitHub Actions artifact. Captures ctest/lit/pytest JUnit XML, CMake configure
+  logs, ninja build log, compile_commands.json, and ccache stats. Designed to
+  be invoked with `if: failure()` so it only runs after a failure in an earlier
+  step. Works for both host-based builds (set container-name to '') and
+  docker-container builds (set container-name to the running or stopped
+  container's name).
+
+inputs:
+  artifact-name:
+    description: >
+      Unique artifact name for actions/upload-artifact (e.g.,
+      'failure-artifacts-amd64-cu12-gcc11'). Should encode the matrix axes so
+      multiple parallel jobs in the same workflow don't collide.
+    required: true
+  build-dir:
+    description: >
+      Path to the CUDA-Q build directory containing Testing/, CMakeFiles/, and
+      .ninja_log. If container-name is set, this path is interpreted inside
+      the container; otherwise on the host.
+    required: false
+    default: 'build'
+  container-name:
+    description: >
+      Name of the docker container to copy diagnostics out of via 'docker cp'.
+      Leave empty for host-based builds (e.g., macOS). The container does not
+      need to be running -- 'docker cp' works on stopped containers too.
+    required: false
+    default: ''
+  ccache-dir:
+    description: >
+      Path to the ccache directory. For container builds this is the path
+      inside the container; for host builds it is on the host.
+    required: false
+    default: '/root/.ccache'
+
+runs:
+  using: "composite"
+  steps:
+    - name: Collect diagnostics
+      shell: bash
+      # Use `set +e` and `|| true` aggressively: this action runs after a
+      # failure, and missing paths must not cause it to fail itself.
+      run: |
+        set +e
+        artifact_name='${{ inputs.artifact-name }}'
+        build_dir='${{ inputs.build-dir }}'
+        container='${{ inputs.container-name }}'
+        ccache_dir='${{ inputs.ccache-dir }}'
+        out="/tmp/failure-artifacts-${artifact_name}"
+
+        rm -rf "$out"
+        mkdir -p "$out"
+
+        copy() {
+          local src="$1"
+          local dest="$2"
+          if [ -n "$container" ]; then
+            docker cp "${container}:${src}" "$dest" 2>/dev/null \
+              && echo "captured: $src" \
+              || echo "missing in container ${container}: $src"
+          else
+            if [ -e "$src" ]; then
+              cp -r "$src" "$dest" && echo "captured: $src"
+            else
+              echo "missing on host: $src"
+            fi
+          fi
+        }
+
+        echo "=== Capturing build diagnostics from ${container:-host} ==="
+        copy "${build_dir}/Testing"                       "$out/Testing"
+        copy "${build_dir}/CMakeFiles/CMakeOutput.log"    "$out/CMakeOutput.log"
+        copy "${build_dir}/CMakeFiles/CMakeError.log"     "$out/CMakeError.log"
+        copy "${build_dir}/CMakeCache.txt"                "$out/CMakeCache.txt"
+        copy "${build_dir}/.ninja_log"                    "$out/ninja.log"
+        copy "${build_dir}/compile_commands.json"         "$out/compile_commands.json"
+
+        # ccache log and stats
+        copy "${ccache_dir}/ccache.log"                   "$out/ccache.log"
+
+        echo "=== Capturing ccache stats ==="
+        if [ -n "$container" ]; then
+          docker exec "$container" sh -c "CCACHE_DIR='${ccache_dir}' ccache -s" \
+            > "$out/ccache-stats.txt" 2>&1 \
+            || echo "ccache -s failed inside container (ccache may not be installed)"
+        else
+          CCACHE_DIR="${ccache_dir}" ccache -s > "$out/ccache-stats.txt" 2>&1 \
+            || echo "ccache -s failed on host (ccache may not be installed)"
+        fi
+
+        # Summarize what we captured for the action log
+        echo "=== Captured artifact contents ==="
+        ls -la "$out" || true
+
+        # Always succeed -- this action is best-effort diagnostic capture.
+        true
+
+    - name: Upload failure artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: failure-artifacts-${{ inputs.artifact-name }}
+        path: /tmp/failure-artifacts-${{ inputs.artifact-name }}
+        retention-days: 7
+        if-no-files-found: warn

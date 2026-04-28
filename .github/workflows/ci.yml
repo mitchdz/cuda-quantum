@@ -380,7 +380,7 @@ jobs:
         with:
           name: cache_keys_ci
           path: cache_keys.txt
-          retention-days: 1
+          retention-days: 7
           if-no-files-found: error
 
       - name: Upload metadata
@@ -388,5 +388,5 @@ jobs:
         with:
           name: metadata_ci
           path: metadata.txt
-          retention-days: 1
+          retention-days: 7
           if-no-files-found: error

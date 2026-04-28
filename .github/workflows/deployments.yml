@@ -176,7 +176,7 @@ jobs:
         with:
           name: publishing_requested
           path: publishing_requested.txt
-          retention-days: 1
+          retention-days: 7
 
       - name: Checkout repository
         uses: actions/checkout@v6

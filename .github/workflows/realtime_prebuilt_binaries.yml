@@ -96,5 +96,5 @@ jobs:
       with:
         name: install_cuda_quantum_realtime_cu${{ inputs.cuda_version }}.${{ inputs.platform }} 
         path: /tmp/install
-        retention-days: 1
+        retention-days: 7
         if-no-files-found: error

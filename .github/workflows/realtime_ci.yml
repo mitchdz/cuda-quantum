@@ -147,7 +147,7 @@ jobs:
         with:
           name: cuda-quantum-realtime-binaries-${{ matrix.platform }}-cu${{ matrix.cuda_version }}
           path: build_artifacts.tgz
-          retention-days: 1
+          retention-days: 7
           if-no-files-found: error
 
       - name: Upload installer artifact
@@ -155,7 +155,7 @@ jobs:
         with:
           name: cuda-quantum-realtime-installer-${{ matrix.platform }}-cu${{ matrix.cuda_version }}
           path: ${{ github.workspace }}/installer
-          retention-days: 1
+          retention-days: 7
           if-no-files-found: error
 
   test_realtime:

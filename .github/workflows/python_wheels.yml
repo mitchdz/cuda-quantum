@@ -200,6 +200,12 @@ jobs:
             python_version=${{ inputs.python_version }}
           outputs: ${{ steps.prereqs.outputs.docker_output }}
 
+      # TODO(phase-2): wire collect-failure-artifacts here. Requires a
+      # `diagnostics-export` target in cudaq.wheel.Dockerfile, mirroring the
+      # existing `ccache-export` pattern (see lines 76-80 of that Dockerfile),
+      # to extract _skbuild logs and CMake output via
+      # `--output type=local,dest=/tmp/diag` on failure.
+
       - name: Extract ccache from build
         if: ${{ !inputs.skip_build }}
         timeout-minutes: 15
@@ -238,7 +244,7 @@ jobs:
         with:
           name: ${{ steps.prereqs.outputs.artifact_name }}
           path: /tmp/wheels
-          retention-days: 1
+          retention-days: 7
           if-no-files-found: error
 
   create_test_config:
@@ -509,7 +515,7 @@ jobs:
         with:
           name: ${{ steps.job_summary.outputs.artifact_id }}_${{ steps.job_summary.outputs.os_id }}_py${{ inputs.python_version }}_validation
           path: ${{ steps.job_summary.outputs.validation_summary }}
-          retention-days: 1
+          retention-days: 7
           if-no-files-found: warn
 
   staging:

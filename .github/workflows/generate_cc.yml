@@ -116,6 +116,9 @@ jobs:
             --target coverage-export \
             --output type=local,dest=${{ github.workspace }}/shared
 
+      # TODO(phase-2): wire collect-failure-artifacts here once a
+      # `diagnostics-export` target lands in cudaq.dev.Dockerfile.
+
       - name: Extract ccache from build
         timeout-minutes: 15
         continue-on-error: true
@@ -174,4 +177,4 @@ jobs:
         with:
           name: ${{ steps.env_save.outputs.filename }}
           path: ${{ steps.env_save.outputs.output_directory }}/${{ steps.env_save.outputs.filename }}.tar
-          retention-days: 1
+          retention-days: 7

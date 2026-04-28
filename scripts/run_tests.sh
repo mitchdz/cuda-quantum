@@ -65,6 +65,9 @@ else
 fi
 echo "Thread budget: $parallel_jobs parallel jobs x $omp_threads OMP threads (${num_jobs} cores)"
 
+# Ensure the Testing directory exists for JUnit XML outputs
+mkdir -p "$build_dir/Testing"
+
 # Detect GPU availability for ctest label filtering
 gpu_excludes=""
 if [ "$(uname)" = "Darwin" ]; then
@@ -80,6 +83,7 @@ fi
 # On machines without a GPU, $gpu_excludes skips gpu_required tests.
 echo "=== Running ctest ==="
 ctest --output-on-failure --test-dir "$build_dir" -j "$num_jobs" \
+  --output-junit "Testing/ctest-junit.xml" \
   -E "ctest-nvqpp|ctest-targettests|pycudaq-mlir" $gpu_excludes
 ctest_status=$?
 if [ $ctest_status -ne 0 ]; then
@@ -90,6 +94,7 @@ fi
 # 2. Main lit tests
 echo "=== Running llvm-lit (build/test) ==="
 "$LLVM_INSTALL_PREFIX/bin/llvm-lit" $verbose --time-tests -j "$num_jobs" \
+  --xunit-xml-output "$build_dir/Testing/lit-test.xml" \
   --param nvqpp_site_config="$build_dir/test/lit.site.cfg.py" \
   "$build_dir/test"
 lit_status=$?
@@ -101,6 +106,7 @@ fi
 # 3. Target tests
 echo "=== Running llvm-lit (build/targettests) ==="
 "$LLVM_INSTALL_PREFIX/bin/llvm-lit" $verbose --time-tests -j "$parallel_jobs" \
+  --xunit-xml-output "$build_dir/Testing/lit-targettests.xml" \
   --param nvqpp_site_config="$build_dir/targettests/lit.site.cfg.py" \
   "$build_dir/targettests"
 targ_status=$?
@@ -112,6 +118,7 @@ fi
 # 4. Python MLIR tests
 echo "=== Running llvm-lit (python/tests/mlir) ==="
 "$LLVM_INSTALL_PREFIX/bin/llvm-lit" $verbose --time-tests -j "$parallel_jobs" \
+  --xunit-xml-output "$build_dir/Testing/lit-python-mlir.xml" \
   --param nvqpp_site_config="$build_dir/python/tests/mlir/lit.site.cfg.py" \
   "$build_dir/python/tests/mlir"
 pymlir_status=$?
@@ -122,7 +129,9 @@ fi
 
 # 5. Python interop tests
 echo "=== Running pytest (interop tests) ==="
-python3 -m pytest $verbose --durations=0 "$build_dir/python/tests/interop/"
+python3 -m pytest $verbose --durations=0 \
+  --junit-xml="$build_dir/Testing/pytest-interop.xml" \
+  "$build_dir/python/tests/interop/"
 pytest_status=$?
 if [ $pytest_status -ne 0 ]; then
   echo "::error::pytest (interop tests) failed with status $pytest_status"
