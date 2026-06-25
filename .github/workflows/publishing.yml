@@ -1079,6 +1079,9 @@ jobs:
 
     container:
       image: ${{ matrix.os_image }}
+      credentials:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_READONLY_TOKEN }}
       options: --user root
       env:
         NVIDIA_VISIBLE_DEVICES: ${{ env.NVIDIA_VISIBLE_DEVICES }}
@@ -1237,6 +1240,9 @@ jobs:
 
     container:
       image: ubuntu:24.04
+      credentials:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_READONLY_TOKEN }}
       options: --user root
       env:
         NVIDIA_VISIBLE_DEVICES: ${{ env.NVIDIA_VISIBLE_DEVICES }}
@@ -1342,6 +1348,9 @@ jobs:
 
     container:
       image: ubuntu:24.04
+      credentials:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_READONLY_TOKEN }}
       options: --user root
       env:
         NVIDIA_VISIBLE_DEVICES: ${{ env.NVIDIA_VISIBLE_DEVICES }}
