@@ -65,7 +65,7 @@ extensions = [
 ]
 
 html_static_path = ['_static']
-html_js_files = ['filter.js']
+html_js_files = ['filter.js', 'copy_as_markdown.js']
 # Disable source links in the HTML output.
 html_show_sourcelink = False
 
@@ -179,7 +179,9 @@ html_theme_options = {
         "#76b900"  # Set upper left search bar to NVIDIA green
 }
 
-html_css_files = ['_static/cudaq_override.css', 'custom.css']
+html_css_files = [
+    '_static/cudaq_override.css', 'custom.css', 'copy_as_markdown.css'
+]
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,

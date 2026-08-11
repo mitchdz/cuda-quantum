@@ -1,0 +1,48 @@
+/*******************************************************************************
+ * Copyright (c) 2022 - 2026 NVIDIA Corporation & Affiliates.                  *
+ * All rights reserved.                                                        *
+ *                                                                             *
+ * This source code and the accompanying materials are made available under    *
+ * the terms of the Apache License 2.0 which accompanies this distribution.    *
+ ******************************************************************************/
+/*******************************************************************************
+ * File: copy_as_markdown.css                                                  *
+ *                                                                             *
+ * Styles for the "Copy as Markdown" button injected by copy_as_markdown.js.   *
+ ******************************************************************************/
+
+
+/* Keep the (possibly JS-created) breadcrumbs aside pinned to the right, matching
+   the sphinx_rtd_theme default. */
+.wy-breadcrumbs-aside {
+    float: right;
+}
+
+.copy-as-markdown-btn {
+    margin: 2px;
+    padding: 4px 12px;
+    border: 1px solid #599400;
+    background: #76b900;
+    color: #fff;
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 13px;
+    line-height: 1.4;
+    transition: all 0.3s ease;
+}
+
+.copy-as-markdown-btn:hover {
+    background: #8c0;
+    box-shadow: 0 0 5px rgba(118, 185, 0, 0.3);
+}
+
+.copy-as-markdown-btn.copy-success {
+    background: #599400;
+    border-color: #3b5d00;
+}
+
+.copy-as-markdown-btn.copy-error {
+    background: #b00020;
+    border-color: #7a0016;
+    color: #fff;
+}
